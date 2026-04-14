@@ -48,6 +48,15 @@ spec:
         - name: controller
           image: "{{ .Values.controller.image.registry | default .Values.registry  }}/{{ .Values.controller.image.repository }}:{{ coalesce .Values.tag .Values.controller.image.tag .Chart.Version }}"
           imagePullPolicy: {{ .Values.controller.image.pullPolicy | default .Values.imagePullPolicy }}
+          args:
+            - --skills-init-image-registry={{ .Values.controller.skillsInitImage.registry | default .Values.registry }}
+            - --skills-init-image-repository={{ .Values.controller.skillsInitImage.repository }}
+            - --skills-init-image-tag={{ coalesce .Values.controller.skillsInitImage.tag .Values.tag .Chart.Version }}
+            - --image-registry={{ .Values.controller.agentImage.registry | default .Values.registry }}
+            - --image-tag={{ coalesce .Values.controller.agentImage.tag .Values.tag .Chart.Version }}
+            {{- if .Values.controller.agentImage.repository }}
+            - --image-repository={{ .Values.controller.agentImage.repository }}
+            {{- end }}
           env:
             - name: KAGENT_NAMESPACE
               valueFrom:
