@@ -386,6 +386,96 @@ func TestGetSessionPath(t *testing.T) {
 	}
 }
 
+func TestGetSessionPath_WritesSessionSRTSettings(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "session-srt-*")
+	if err != nil {
+		t.Fatalf("mktemp: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Point the base settings env var at a fixture with a known filesystem policy
+	// plus arbitrary extra keys we expect to round-trip unchanged.
+	baseSettings := `{"filesystem":{"allowWrite":[".","/tmp"],"denyRead":[],"denyWrite":[]},"network":{"allowedDomains":[],"deniedDomains":[]},"customFlagA":true,"customFlagB":"value"}`
+	basePath := filepath.Join(tmpDir, "base-srt-settings.json")
+	if err := os.WriteFile(basePath, []byte(baseSettings), 0644); err != nil {
+		t.Fatalf("write base settings: %v", err)
+	}
+	t.Setenv("KAGENT_SRT_SETTINGS_PATH", basePath)
+
+	skillsDir := filepath.Join(tmpDir, "skills")
+	if err := os.MkdirAll(skillsDir, 0755); err != nil {
+		t.Fatalf("mkdir skills: %v", err)
+	}
+
+	sessionID := "sess-xyz"
+	sessionPath, err := GetSessionPath(sessionID, skillsDir)
+	if err != nil {
+		t.Fatalf("GetSessionPath: %v", err)
+	}
+
+	sessionSettingsPath := filepath.Join(sessionPath, SessionSRTSettingsFileName)
+	data, err := os.ReadFile(sessionSettingsPath)
+	if err != nil {
+		t.Fatalf("read session settings: %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse session settings: %v", err)
+	}
+
+	// Unknown top-level keys from the base must round-trip unchanged.
+	if parsed["customFlagA"] != true {
+		t.Errorf("customFlagA: want true, got %v", parsed["customFlagA"])
+	}
+	if parsed["customFlagB"] != "value" {
+		t.Errorf("customFlagB: want \"value\", got %v", parsed["customFlagB"])
+	}
+
+	fs, ok := parsed["filesystem"].(map[string]any)
+	if !ok {
+		t.Fatalf("filesystem field missing or wrong type")
+	}
+	aw, ok := fs["allowWrite"].([]any)
+	if !ok {
+		t.Fatalf("allowWrite missing or wrong type")
+	}
+	// Must be narrowed to session dir only.
+	foundCwd, foundSession := false, false
+	for _, p := range aw {
+		s, _ := p.(string)
+		if s == "." {
+			foundCwd = true
+		}
+		if s == sessionPath {
+			foundSession = true
+		}
+		if s == "/tmp" {
+			t.Errorf("allowWrite must not include /tmp; got %v", aw)
+		}
+	}
+	if !foundCwd || !foundSession {
+		t.Errorf("allowWrite should contain both '.' and %q; got %v", sessionPath, aw)
+	}
+
+	// denyRead must include the sessions root (/tmp/kagent by default) so
+	// sibling sessions are tmpfs-masked.
+	dr, ok := fs["denyRead"].([]any)
+	if !ok {
+		t.Fatalf("denyRead missing or wrong type")
+	}
+	want := filepath.Dir(sessionPath)
+	found := false
+	for _, p := range dr {
+		if s, _ := p.(string); s == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("denyRead should contain %q; got %v", want, dr)
+	}
+}
+
 func TestGenerateSkillsToolDescription(t *testing.T) {
 	skills := []Skill{
 		{Name: "skill1", Description: "First skill"},

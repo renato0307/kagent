@@ -425,6 +425,85 @@ func TestExecuteCommand_RequiresMountedSRTSettings(t *testing.T) {
 	}
 }
 
+// installFakeSRTWithEcho installs a fake srt that prints the --settings path
+// it was invoked with (on its own line, prefixed with "SETTINGS_PATH=") and
+// then runs the rest of the command. This lets tests verify which settings
+// file ExecuteCommand used.
+func installFakeSRTWithEcho(t *testing.T) string {
+	t.Helper()
+	tmpDir := createTempDir(t)
+	scriptPath := filepath.Join(tmpDir, "srt")
+	script := `#!/bin/sh
+settings=""
+if [ "$1" = "--settings" ]; then
+  settings="$2"
+  shift 2
+fi
+echo "SETTINGS_PATH=${settings}"
+exec "$@"
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
+		t.Fatalf("write fake srt: %v", err)
+	}
+	baseSettings := filepath.Join(tmpDir, "base-srt-settings.json")
+	if err := os.WriteFile(baseSettings, []byte(`{}`), 0644); err != nil {
+		t.Fatalf("write base: %v", err)
+	}
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv(srtSettingsPathEnv, baseSettings)
+	return tmpDir
+}
+
+func TestExecuteCommand_PrefersSessionSettings(t *testing.T) {
+	fakeDir := installFakeSRTWithEcho(t)
+	basePath := filepath.Join(fakeDir, "base-srt-settings.json")
+
+	sessionDir := createTempDir(t)
+	defer os.RemoveAll(sessionDir)
+	sessionSettings := filepath.Join(sessionDir, SessionSRTSettingsFileName)
+	if err := os.WriteFile(sessionSettings, []byte(`{}`), 0644); err != nil {
+		t.Fatalf("write session settings: %v", err)
+	}
+
+	executor, err := NewCommandExecutorFromEnv()
+	if err != nil {
+		t.Fatalf("NewCommandExecutorFromEnv: %v", err)
+	}
+
+	out, err := executor.ExecuteCommand(context.Background(), "true", sessionDir)
+	if err != nil {
+		t.Fatalf("ExecuteCommand: %v", err)
+	}
+	if !strings.Contains(out, "SETTINGS_PATH="+sessionSettings) {
+		t.Errorf("expected session settings path in output; got %q", out)
+	}
+	if strings.Contains(out, "SETTINGS_PATH="+basePath) {
+		t.Errorf("base settings should not have been used; got %q", out)
+	}
+}
+
+func TestExecuteCommand_FallsBackToBaseSettings(t *testing.T) {
+	fakeDir := installFakeSRTWithEcho(t)
+	basePath := filepath.Join(fakeDir, "base-srt-settings.json")
+
+	// workingDir without a session srt-settings.json file.
+	sessionDir := createTempDir(t)
+	defer os.RemoveAll(sessionDir)
+
+	executor, err := NewCommandExecutorFromEnv()
+	if err != nil {
+		t.Fatalf("NewCommandExecutorFromEnv: %v", err)
+	}
+
+	out, err := executor.ExecuteCommand(context.Background(), "true", sessionDir)
+	if err != nil {
+		t.Fatalf("ExecuteCommand: %v", err)
+	}
+	if !strings.Contains(out, "SETTINGS_PATH="+basePath) {
+		t.Errorf("expected base settings path in output; got %q", out)
+	}
+}
+
 func TestExecuteCommand_Timeout(t *testing.T) {
 	// Skip this test if running in CI or if test timeout is too short
 	// This test requires at least 35 seconds to run properly

@@ -124,6 +124,23 @@ func NewCommandExecutorFromEnv() (*CommandExecutor, error) {
 	return &CommandExecutor{srtArgs: srtArgs}, nil
 }
 
+// resolveSessionSRTSettingsArgs returns --settings args pointing at a
+// per-session SRT settings file when it exists under workingDir. That file is
+// written by skills.GetSessionPath at session init time and narrows the policy
+// to the session's own directory so cross-session writes are blocked.
+// Falls back to the pod-wide settings (e.srtArgs) if the session file is
+// missing, which happens for non-skill agents and older runtimes.
+func (e *CommandExecutor) resolveSessionSRTSettingsArgs(workingDir string) []string {
+	if workingDir == "" {
+		return e.srtArgs
+	}
+	sessionSettings := filepath.Join(workingDir, SessionSRTSettingsFileName)
+	if info, err := os.Stat(sessionSettings); err == nil && !info.IsDir() {
+		return []string{"--settings", sessionSettings}
+	}
+	return e.srtArgs
+}
+
 // ExecuteCommand executes a shell command.
 func (e *CommandExecutor) ExecuteCommand(ctx context.Context, command string, workingDir string) (string, error) {
 	timeout := 30 * time.Second
@@ -134,7 +151,8 @@ func (e *CommandExecutor) ExecuteCommand(ctx context.Context, command string, wo
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	args := append(append([]string{}, e.srtArgs...), "bash", "-c", command)
+	srtArgs := e.resolveSessionSRTSettingsArgs(workingDir)
+	args := append(append([]string{}, srtArgs...), "bash", "-c", command)
 	cmd := exec.CommandContext(ctx, "srt", args...)
 	cmd.Dir = workingDir
 

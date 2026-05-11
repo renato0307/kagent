@@ -1,11 +1,18 @@
 package skills
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// SessionSRTSettingsFileName is the filename SRT settings are written to
+// inside each session directory. CommandExecutor prefers this file (when
+// present) over the pod-wide KAGENT_SRT_SETTINGS_PATH so the sandbox policy
+// can be scoped to the session.
+const SessionSRTSettingsFileName = "srt-settings.json"
 
 // Skill represents a discovered skill with metadata
 type Skill struct {
@@ -198,5 +205,68 @@ func GetSessionPath(sessionID, skillsDirectory string) (string, error) {
 		_ = err
 	}
 
+	if err := writeSessionSRTSettings(sessionPath); err != nil {
+		// Non-fatal: CommandExecutor falls back to the pod-wide settings file
+		// (KAGENT_SRT_SETTINGS_PATH) when the session-scoped file is absent.
+		// Log nothing here — callers own the context for observability.
+		_ = err
+	}
+
 	return sessionPath, nil
+}
+
+// writeSessionSRTSettings materializes a per-session SRT settings file under
+// sessionPath. It reads the pod-wide base settings from KAGENT_SRT_SETTINGS_PATH
+// (written by the kagent controller into a mounted Secret) and narrows the
+// filesystem allowWrite list to the session's own directory so that bash /
+// python tool invocations in one session cannot write into another session's
+// uploads/outputs directories.
+func writeSessionSRTSettings(sessionPath string) error {
+	basePath := strings.TrimSpace(os.Getenv("KAGENT_SRT_SETTINGS_PATH"))
+	if basePath == "" {
+		return fmt.Errorf("KAGENT_SRT_SETTINGS_PATH is not set")
+	}
+	baseBytes, err := os.ReadFile(basePath)
+	if err != nil {
+		return fmt.Errorf("failed to read base SRT settings %s: %w", basePath, err)
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(baseBytes, &settings); err != nil {
+		return fmt.Errorf("failed to parse base SRT settings %s: %w", basePath, err)
+	}
+
+	fs, ok := settings["filesystem"].(map[string]any)
+	if !ok {
+		fs = map[string]any{}
+		settings["filesystem"] = fs
+	}
+	// Scope writes to this session only. "." covers the process cwd (also the
+	// session dir); the absolute path makes absolute-path writes explicit.
+	fs["allowWrite"] = []string{".", sessionPath}
+	// Hide sibling session directories. SRT tmpfs-masks denyRead paths first
+	// and then applies allowWrite bind-mounts, so this session's own dir
+	// reappears on top of the mask. Net effect: attacker sees its own session
+	// but not /tmp/kagent/<other-session>/*.
+	sessionsRoot := filepath.Dir(sessionPath)
+	existingDenyRead, _ := fs["denyRead"].([]any)
+	denyRead := make([]string, 0, len(existingDenyRead)+1)
+	for _, v := range existingDenyRead {
+		if s, ok := v.(string); ok && s != sessionsRoot {
+			denyRead = append(denyRead, s)
+		}
+	}
+	denyRead = append(denyRead, sessionsRoot)
+	fs["denyRead"] = denyRead
+
+	out, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("failed to marshal session SRT settings: %w", err)
+	}
+
+	sessionSettingsPath := filepath.Join(sessionPath, SessionSRTSettingsFileName)
+	if err := os.WriteFile(sessionSettingsPath, out, 0600); err != nil {
+		return fmt.Errorf("failed to write session SRT settings: %w", err)
+	}
+	return nil
 }
