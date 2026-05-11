@@ -42,6 +42,7 @@ type resolvedDeployment struct {
 	Tolerations          []corev1.Toleration
 	Affinity             *corev1.Affinity
 	NodeSelector         map[string]string
+	RuntimeClassName     *string
 	SecurityContext      *corev1.SecurityContext
 	PodSecurityContext   *corev1.PodSecurityContext
 	ServiceAccountName   *string
@@ -198,6 +199,7 @@ func resolveInlineDeployment(agent v1alpha2.AgentObject, mdd *modelDeploymentDat
 		Tolerations:          slices.Clone(spec.Tolerations),
 		Affinity:             spec.Affinity,
 		NodeSelector:         maps.Clone(spec.NodeSelector),
+		RuntimeClassName:     spec.RuntimeClassName,
 		SecurityContext:      spec.SecurityContext,
 		PodSecurityContext:   spec.PodSecurityContext,
 		ServiceAccountName:   spec.ServiceAccountName,
@@ -284,6 +286,7 @@ func resolveByoDeployment(agent v1alpha2.AgentObject) (*resolvedDeployment, erro
 		Tolerations:          slices.Clone(spec.Tolerations),
 		Affinity:             spec.Affinity,
 		NodeSelector:         maps.Clone(spec.NodeSelector),
+		RuntimeClassName:     spec.RuntimeClassName,
 		SecurityContext:      spec.SecurityContext,
 		PodSecurityContext:   spec.PodSecurityContext,
 		ServiceAccountName:   spec.ServiceAccountName,

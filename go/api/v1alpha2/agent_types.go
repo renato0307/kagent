@@ -366,6 +366,12 @@ type SharedDeploymentSpec struct {
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// RuntimeClassName refers to a RuntimeClass object in the cluster which will
+	// be used to run this pod. When set, the scheduling rules (nodeSelector and
+	// tolerations) defined on the RuntimeClass are merged into the pod spec by
+	// the Kubernetes admission controller.
+	// +optional
+	RuntimeClassName *string `json:"runtimeClassName,omitempty"`
 	// +optional
 	SecurityContext *corev1.SecurityContext `json:"securityContext,omitempty"`
 	// +optional

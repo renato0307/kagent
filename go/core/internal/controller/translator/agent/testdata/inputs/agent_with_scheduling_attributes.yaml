@@ -40,6 +40,7 @@ objects:
         deployment:
           nodeSelector:
             kubernetes.io/os: linux
+          runtimeClassName: gvisor
           tolerations:
           - operator: Exists
           affinity:

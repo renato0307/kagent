@@ -241,6 +241,7 @@
             "nodeSelector": {
               "kubernetes.io/os": "linux"
             },
+            "runtimeClassName": "gvisor",
             "serviceAccountName": "agent-with-scheduling-attributes",
             "tolerations": [
               {

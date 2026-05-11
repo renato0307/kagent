@@ -5431,6 +5431,13 @@ spec:
                               More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                             type: object
                         type: object
+                      runtimeClassName:
+                        description: |-
+                          RuntimeClassName refers to a RuntimeClass object in the cluster which will
+                          be used to run this pod. When set, the scheduling rules (nodeSelector and
+                          tolerations) defined on the RuntimeClass are merged into the pod spec by
+                          the Kubernetes admission controller.
+                        type: string
                       securityContext:
                         description: |-
                           SecurityContext holds security configuration that will be applied to a container.
@@ -10741,6 +10748,13 @@ spec:
                               More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                             type: object
                         type: object
+                      runtimeClassName:
+                        description: |-
+                          RuntimeClassName refers to a RuntimeClass object in the cluster which will
+                          be used to run this pod. When set, the scheduling rules (nodeSelector and
+                          tolerations) defined on the RuntimeClass are merged into the pod spec by
+                          the Kubernetes admission controller.
+                        type: string
                       securityContext:
                         description: |-
                           SecurityContext holds security configuration that will be applied to a container.

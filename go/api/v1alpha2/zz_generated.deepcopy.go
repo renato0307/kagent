@@ -1649,6 +1649,11 @@ func (in *SharedDeploymentSpec) DeepCopyInto(out *SharedDeploymentSpec) {
 			(*out)[key] = val
 		}
 	}
+	if in.RuntimeClassName != nil {
+		in, out := &in.RuntimeClassName, &out.RuntimeClassName
+		*out = new(string)
+		**out = **in
+	}
 	if in.SecurityContext != nil {
 		in, out := &in.SecurityContext, &out.SecurityContext
 		*out = new(v1.SecurityContext)
